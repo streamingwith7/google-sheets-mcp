@@ -99,26 +99,6 @@ mcp = FastMCP(
 
 
 # ===========================================================================
-# Tool 0: debug (temporary — remove after testing)
-# ===========================================================================
-@mcp.tool()
-def debug_env() -> dict:
-    """Show masked env var info for debugging."""
-    cid = os.environ.get("GOOGLE_CLIENT_ID", "")
-    cs = os.environ.get("GOOGLE_CLIENT_SECRET", "")
-    rt = os.environ.get("GOOGLE_REFRESH_TOKEN", "")
-    return {
-        "client_id_len": len(cid),
-        "client_id_start": cid[:20] if cid else "EMPTY",
-        "client_secret_len": len(cs),
-        "client_secret_start": cs[:10] if cs else "EMPTY",
-        "refresh_token_len": len(rt),
-        "refresh_token_start": rt[:20] if rt else "EMPTY",
-        "refresh_token_end": rt[-10:] if rt else "EMPTY",
-    }
-
-
-# ===========================================================================
 # Tool 1: list_spreadsheets
 # ===========================================================================
 @mcp.tool()
