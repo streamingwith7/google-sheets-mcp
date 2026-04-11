@@ -1,9 +1,9 @@
 """
-Google Sheets MCP Server
-========================
+Google Sheets & Drive MCP Server
+=================================
 A remote MCP (Model Context Protocol) server that wraps the Google Sheets
 and Google Drive APIs. It lets Claude read, write, search, and manage
-spreadsheets on your behalf.
+spreadsheets AND files/folders in your Google Drive.
 
 Transport: Streamable HTTP (so it works as a Claude remote MCP connector).
 Auth:      Uses a long-lived Google OAuth 2.0 refresh token from env vars.
@@ -81,11 +81,11 @@ def _get_drive_service():
 port = int(os.environ.get("PORT", 8000))
 
 mcp = FastMCP(
-    name="Google Sheets",
+    name="Google Sheets & Drive",
     instructions=(
-        "Manage Google Sheets spreadsheets. You can list spreadsheets, "
-        "create new ones, read and write data, search for rows, and "
-        "manage tabs (sheets) within a spreadsheet."
+        "Manage Google Sheets and Google Drive. You can list/create/read/write "
+        "spreadsheets, manage tabs, AND list/create/move/rename/delete files "
+        "and folders in Google Drive."
     ),
     host="0.0.0.0",
     port=port,
@@ -472,6 +472,330 @@ def delete_tab(spreadsheet_id: str, tab_name: str) -> str:
     ).execute()
 
     return f"Tab '{tab_name}' deleted successfully."
+
+
+# ===========================================================================
+# GOOGLE DRIVE TOOLS
+# ===========================================================================
+
+
+# ===========================================================================
+# Tool 9: list_files
+# ===========================================================================
+@mcp.tool()
+def list_files(
+    folder_id: str = "root",
+    query: str = "",
+    file_type: str = "",
+    max_results: int = 20,
+) -> list[dict]:
+    """
+    List files and folders in Google Drive.
+
+    Args:
+        folder_id: The folder to list. Use "root" for the top-level Drive.
+                   Use a folder ID to list contents of a specific folder.
+        query: Optional search term to filter by file name.
+        file_type: Optional filter: "folder", "spreadsheet", "document",
+                   "pdf", "image", or "" for all types.
+        max_results: Maximum number of results to return (default 20).
+
+    Returns a list of files with 'id', 'name', 'mimeType', and 'modifiedTime'.
+    """
+    drive = _get_drive_service()
+
+    # Build the search query
+    q_parts = [f"'{folder_id}' in parents", "trashed = false"]
+
+    if query:
+        safe_query = query.replace("'", "\\'")
+        q_parts.append(f"name contains '{safe_query}'")
+
+    # Map friendly type names to MIME types
+    type_map = {
+        "folder": "application/vnd.google-apps.folder",
+        "spreadsheet": "application/vnd.google-apps.spreadsheet",
+        "document": "application/vnd.google-apps.document",
+        "pdf": "application/pdf",
+        "image": "image/",
+    }
+    if file_type and file_type in type_map:
+        mime = type_map[file_type]
+        if file_type == "image":
+            q_parts.append(f"mimeType contains '{mime}'")
+        else:
+            q_parts.append(f"mimeType = '{mime}'")
+
+    q = " and ".join(q_parts)
+
+    response = (
+        drive.files()
+        .list(
+            q=q,
+            pageSize=max_results,
+            fields="files(id, name, mimeType, modifiedTime, size)",
+            orderBy="modifiedTime desc",
+        )
+        .execute()
+    )
+
+    results = []
+    for f in response.get("files", []):
+        results.append(
+            {
+                "id": f["id"],
+                "name": f["name"],
+                "mimeType": f.get("mimeType", ""),
+                "modifiedTime": f.get("modifiedTime", ""),
+                "size": f.get("size", ""),
+            }
+        )
+
+    return results
+
+
+# ===========================================================================
+# Tool 10: search_drive
+# ===========================================================================
+@mcp.tool()
+def search_drive(query: str, max_results: int = 20) -> list[dict]:
+    """
+    Search across your entire Google Drive for files and folders by name.
+
+    Unlike list_files, this searches EVERYWHERE — not just one folder.
+
+    Args:
+        query: The search term to look for in file names.
+        max_results: Maximum number of results (default 20).
+
+    Returns a list of matching files with 'id', 'name', 'mimeType', and 'modifiedTime'.
+    """
+    drive = _get_drive_service()
+
+    safe_query = query.replace("'", "\\'")
+    q = f"name contains '{safe_query}' and trashed = false"
+
+    response = (
+        drive.files()
+        .list(
+            q=q,
+            pageSize=max_results,
+            fields="files(id, name, mimeType, modifiedTime, parents)",
+            orderBy="modifiedTime desc",
+        )
+        .execute()
+    )
+
+    results = []
+    for f in response.get("files", []):
+        results.append(
+            {
+                "id": f["id"],
+                "name": f["name"],
+                "mimeType": f.get("mimeType", ""),
+                "modifiedTime": f.get("modifiedTime", ""),
+                "parents": f.get("parents", []),
+            }
+        )
+
+    return results
+
+
+# ===========================================================================
+# Tool 11: create_folder
+# ===========================================================================
+@mcp.tool()
+def create_folder(name: str, parent_folder_id: str = "root") -> dict:
+    """
+    Create a new folder in Google Drive.
+
+    Args:
+        name: The name for the new folder.
+        parent_folder_id: Where to create it. Use "root" for the top-level
+                          of your Drive, or a folder ID to nest it inside
+                          an existing folder.
+
+    Returns the new folder's id and name.
+    """
+    drive = _get_drive_service()
+
+    body = {
+        "name": name,
+        "mimeType": "application/vnd.google-apps.folder",
+        "parents": [parent_folder_id],
+    }
+
+    result = drive.files().create(body=body, fields="id, name").execute()
+
+    return {"id": result["id"], "name": result["name"]}
+
+
+# ===========================================================================
+# Tool 12: delete_file
+# ===========================================================================
+@mcp.tool()
+def delete_file(file_id: str, permanent: bool = False) -> str:
+    """
+    Delete a file or folder from Google Drive.
+
+    Args:
+        file_id: The ID of the file or folder to delete.
+        permanent: If False (default), moves to Trash (recoverable).
+                   If True, permanently deletes (cannot be undone!).
+
+    Works for any file type: documents, spreadsheets, folders, PDFs, etc.
+    """
+    drive = _get_drive_service()
+
+    if permanent:
+        drive.files().delete(fileId=file_id).execute()
+        return f"File {file_id} permanently deleted."
+    else:
+        # Move to trash by updating the 'trashed' property
+        drive.files().update(fileId=file_id, body={"trashed": True}).execute()
+        return f"File {file_id} moved to Trash."
+
+
+# ===========================================================================
+# Tool 13: rename_file
+# ===========================================================================
+@mcp.tool()
+def rename_file(file_id: str, new_name: str) -> dict:
+    """
+    Rename a file or folder in Google Drive.
+
+    Args:
+        file_id: The ID of the file or folder to rename.
+        new_name: The new name.
+
+    Returns the updated file info.
+    """
+    drive = _get_drive_service()
+
+    result = (
+        drive.files()
+        .update(fileId=file_id, body={"name": new_name}, fields="id, name")
+        .execute()
+    )
+
+    return {"id": result["id"], "name": result["name"]}
+
+
+# ===========================================================================
+# Tool 14: move_file
+# ===========================================================================
+@mcp.tool()
+def move_file(file_id: str, new_folder_id: str) -> dict:
+    """
+    Move a file or folder to a different folder in Google Drive.
+
+    Args:
+        file_id: The ID of the file/folder to move.
+        new_folder_id: The ID of the destination folder.
+
+    Returns the updated file info with its new parent folder.
+    """
+    drive = _get_drive_service()
+
+    # First, get the current parent(s) so we can remove them
+    file_info = (
+        drive.files().get(fileId=file_id, fields="parents").execute()
+    )
+    current_parents = ",".join(file_info.get("parents", []))
+
+    # Move by adding new parent and removing old parent(s)
+    result = (
+        drive.files()
+        .update(
+            fileId=file_id,
+            addParents=new_folder_id,
+            removeParents=current_parents,
+            fields="id, name, parents",
+        )
+        .execute()
+    )
+
+    return {
+        "id": result["id"],
+        "name": result["name"],
+        "parents": result.get("parents", []),
+    }
+
+
+# ===========================================================================
+# Tool 15: get_file_info
+# ===========================================================================
+@mcp.tool()
+def get_file_info(file_id: str) -> dict:
+    """
+    Get detailed information about a file or folder in Google Drive.
+
+    Args:
+        file_id: The ID of the file or folder.
+
+    Returns name, type, size, creation date, modification date, owner, and URL.
+    """
+    drive = _get_drive_service()
+
+    result = (
+        drive.files()
+        .get(
+            fileId=file_id,
+            fields="id, name, mimeType, size, createdTime, modifiedTime, owners, webViewLink, parents",
+        )
+        .execute()
+    )
+
+    owners = [o.get("displayName", o.get("emailAddress", "")) for o in result.get("owners", [])]
+
+    return {
+        "id": result["id"],
+        "name": result["name"],
+        "mimeType": result.get("mimeType", ""),
+        "size": result.get("size", "N/A"),
+        "createdTime": result.get("createdTime", ""),
+        "modifiedTime": result.get("modifiedTime", ""),
+        "owners": owners,
+        "webViewLink": result.get("webViewLink", ""),
+        "parents": result.get("parents", []),
+    }
+
+
+# ===========================================================================
+# Tool 16: copy_file
+# ===========================================================================
+@mcp.tool()
+def copy_file(file_id: str, new_name: str = "", destination_folder_id: str = "") -> dict:
+    """
+    Make a copy of a file in Google Drive.
+
+    Args:
+        file_id: The ID of the file to copy.
+        new_name: Optional new name for the copy. If empty, Google names it "Copy of ...".
+        destination_folder_id: Optional folder to place the copy in.
+                               If empty, copies to the same folder as the original.
+
+    Returns the new copy's id, name, and URL.
+    """
+    drive = _get_drive_service()
+
+    body = {}
+    if new_name:
+        body["name"] = new_name
+    if destination_folder_id:
+        body["parents"] = [destination_folder_id]
+
+    result = (
+        drive.files()
+        .copy(fileId=file_id, body=body, fields="id, name, webViewLink")
+        .execute()
+    )
+
+    return {
+        "id": result["id"],
+        "name": result["name"],
+        "webViewLink": result.get("webViewLink", ""),
+    }
 
 
 # ===========================================================================
