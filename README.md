@@ -1,168 +1,117 @@
-# Google Sheets MCP Server
+**1/**
+How long to crack a 256-bit Bitcoin wallet?
+The universe dies first. 🔒
 
-A remote [MCP](https://modelcontextprotocol.io) server that lets Claude read, write, and manage your Google Sheets -- from the desktop app, the web, or your phone.
+But what if the wallet's "randomness" was never random?
+We fully reproduced the ColdCard Yasmarang PRNG flaw and slashed the crack complexity from **2²⁵⁶ to 2⁴⁰**.
 
-## What it does
+**A 2²¹⁶× reduction.** 216 orders of magnitude, gone.
+The word "impossible" just got rewritten. 🧵👇
 
-Once deployed, Claude can:
-- **List your spreadsheets** from Google Drive
-- **Create new spreadsheets**
-- **Get spreadsheet info** including all tab names
-- **Add and delete tabs** within a spreadsheet
-- **Read data** from any range of cells
-- **Write data** (overwrite or append rows)
-- **Search** for specific text across a sheet
+**2/**
+📦 Two weapons, one mission: turn "un-enumerable" into "enumerated."
 
----
+⚡ **Yasmarang-Streaming** — pure streaming engine. States in, addresses out, memory ≈ 0. 42 states/sec, 2× the Python original.
 
-## Prerequisites
+💾 **Yasmarang-Cached** — the real game-breaker 👇
 
-- **Python 3.11+** installed on your Mac
-- A **Google Cloud project** with the Google Sheets API and Google Drive API enabled, plus OAuth 2.0 credentials (type: "Desktop app")
-- A **GitHub account** (with the `gh` CLI installed -- `brew install gh`)
-- A free **[Render](https://render.com)** account for hosting
+**3/**
+Why does Cached hit different?
 
----
+✅ **SQLite permanent cache** — every computed state banked forever; PBKDF2 (90% of compute) skipped outright
+✅ **Checkpoint & resume** — Ctrl-C whenever. 100k states today, continue tomorrow — siege the whole space, slice by slice
+✅ **Free retargeting** — new target list? The entire space is already waiting in the DB. Re-screen in seconds
+✅ **Cross-implementation** — Python and Go resume each other's databases, byte-identical fingerprints
 
-## Step-by-step setup
+Compute once. Harvest forever. 🎯
 
-### Step 1: Enable the Google APIs
+**4/**
+What can it enumerate? **Everything.** 🔍
 
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
-2. Create a new project (or use an existing one).
-3. Go to **APIs & Services** > **Library**.
-4. Search for **Google Sheets API** and click **Enable**.
-5. Search for **Google Drive API** and click **Enable**.
-6. Go to **APIs & Services** > **Credentials**.
-7. Click **Create Credentials** > **OAuth client ID**.
-8. Choose **Desktop app** as the application type.
-9. Copy the **Client ID** and **Client Secret** -- you'll need them in the next step.
+▪️ Boot time windows (SysTick + RTC dual time sources, any range)
+▪️ Device UID (single / range / batch / BCD grid / full space)
+▪️ UID unknown? Pad folding still covers the entire 2³²
+▪️ Mk4+ 32-bit reseed candidates
+▪️ PRNG stream offsets
+▪️ Precision tiers: smoke test → 20M states/sec
 
-### Step 2: Get your Google OAuth refresh token
+Every state → 24-word mnemonic → 40+ addresses → target matching, **zero false negatives**.
+Every coin in the space is within range. 🎯
 
-This is a one-time step you run on your Mac. It opens your browser, asks you to log into Google, and prints a refresh token that the server uses to stay authenticated.
+**5/**
+Intel is the trigger. 🕵️
 
-```bash
-# Go into the project folder
-cd ~/google-sheets-mcp
+🔗 **On-chain intel** — first TX time → pin the wallet's birth window
+🆔 **Device UID** — deletes the 2³² folded space in one stroke
+⏱️ **Boot time** — every 10× tighter window = 10× less compute
 
-# Create a virtual environment and activate it
-python3 -m venv venv
-source venv/bin/activate
+The tool enumerates all three: any window, any UID sweep, folding as fallback.
+**The sharper the intel, the closer 2⁴⁰ gets to "one afternoon."**
+No intel? The tool brute-lays the groundwork, grinding forward inch by inch.
 
-# Install dependencies
-pip install -r requirements.txt
+**6/**
+This is what we proved:
 
-# Run the OAuth helper script
-python get_refresh_token.py
-```
+Cryptographic walls are never toppled by brute force.
+They're opened from the inside — by **one faulty random number**. 🏰💥
 
-The script will ask you to paste your **Client ID** and **Client Secret**, then open your browser. Log in with the Google account whose spreadsheets you want to manage, and click "Allow".
+A universe-scale problem → an afternoon's engineering.
+The tool is ready. The rest is just time. ⏳
 
-When it finishes, you'll see a line like:
+#COLDCARD #BitcoinHack #CryptoSecurity #SeedSecurity #HardwareWallet #selfcustody
+-------------2
+Token usage monitor CLI · Linux + Windows
 
-```
-SUCCESS! Here is your refresh token:
+Static Go build · symbols stripped · zero egress · zero telemetry
+SHA256 verified · strace / Wireshark self-audit ready
 
-1//0eXXXXXXXXXXXXXXXXXXXXXXXXXX
-```
+Tiers:
 
-**Copy that token** and save it somewhere safe (e.g. a note). You'll need it in Step 4.
+Streaming + README .............. 0.0033 USDT
+Cached    + README .............. 0.01 BTC
+Architecture source (Streaming | Cached) ... 0.018 BTC
 
----
+BTC: bc1qk3dvn48grr3dkmnfwlyux6vy5vqwdezts9lxgx
 
-### Step 3: Push to GitHub
+EMAIL：gatherone@proton.me
 
-If you haven't already, create a GitHub repo and push the code:
-
-```bash
-cd ~/google-sheets-mcp
-git init
-git add .
-git commit -m "Initial commit: Google Sheets MCP server"
-gh repo create google-sheets-mcp --public --source=. --push
-```
+Flow: pay -> DM @YOUR_X_HANDLE with tx screenshot -> delivery within 12h of confirmation
 
 ---
 
-### Step 4: Deploy to Render
+[Thread 1/3]
+Why static Go?
+Single-binary deploy, zero runtime deps.
+Symbols stripped - reversing cost ~= rewriting.
+Want to audit? Buy the source tier. Source = docs.
 
-1. Go to [render.com](https://render.com) and sign in.
-2. Click **"New +"** > **"Web Service"**.
-3. Connect your GitHub account if you haven't, then select the **google-sheets-mcp** repo.
-4. Render will auto-detect the settings from `render.yaml`. Verify:
-   - **Build command:** `pip install -r requirements.txt`
-   - **Start command:** `python server.py`
-5. Scroll to **Environment Variables** and add these three:
+[Thread 2/3]
+Zero egress means: no network calls except the LLM API you explicitly invoke.
+No telemetry, no data collection.
+Verify it yourself with tcpdump / Wireshark in 2 minutes.
 
-   | Key                    | Value                        |
-   |------------------------|------------------------------|
-   | `GOOGLE_CLIENT_ID`     | Your OAuth Client ID         |
-   | `GOOGLE_CLIENT_SECRET` | Your OAuth Client Secret     |
-   | `GOOGLE_REFRESH_TOKEN` | The token from Step 2        |
+[Thread 3/3]
+Delivery package:
+• Linux + Windows binaries
+• README deployment notes
+• SHA256 checksums
+Source tier adds full architecture annotations and reproducible build scripts.
 
-6. Click **"Create Web Service"** and wait for the deploy to finish.
-7. Copy your service URL -- it will look like `https://google-sheets-mcp-xxxx.onrender.com`.
+#COLDCARD #BitcoinHack #CryptoSecurity #SeedSecurity #HardwareWallet #selfcustody   
+                                                                                             LION626GROUP.
 
----
+BY THE WAY:
+Gatherone deadline has passed. We have not received payment, and we are done waiting.We are releasing your data.
+  gatherone DB: the "core ledger" of a cross-platform ad business.
 
-### Step 5: Register in Claude as a remote MCP connector
+  44GB hosting $721M+ in cumulative ad spend across Meta/Google/TikTok — 14.97M placement rows, 114K accounts, 790
+  clients, 83 countries.
 
-#### Claude Desktop (Mac)
+  Gaming vertical leads at $226M. Top client JOYFUL alone: $114M.
+NOW everybody can download and watch。
+AND WE BUILD A ENUMTOOLS OF COLDCARD ENUMTOOLS
 
-1. Open Claude > **Settings** (gear icon) > **Integrations**.
-2. Click **"Add custom integration"**.
-3. Set the name to **Google Sheets**.
-4. Set the URL to: `https://google-sheets-mcp-xxxx.onrender.com/mcp` (your Render URL + `/mcp`).
-5. Click **Save**.
-
-#### Claude Web (claude.ai)
-
-1. Go to [claude.ai](https://claude.ai) > **Settings** > **Integrations**.
-2. Follow the same steps as above.
-
-#### Claude Mobile (iOS / Android)
-
-Remote MCP integrations added in desktop or web sync automatically to your mobile app.
-
----
-
-## Testing it out
-
-Start a new conversation with Claude and try:
-
-> "List my Google Sheets spreadsheets."
-
-> "Create a new spreadsheet called 'Budget 2026'."
-
-> "Read the data from spreadsheet ID abc123."
-
-> "Add a row with Name=Alice and Age=30 to my spreadsheet."
-
-> "Search for 'Alice' in my spreadsheet."
-
----
-
-## Running locally (for development)
-
-```bash
-cd ~/google-sheets-mcp
-source venv/bin/activate
-
-# Set env vars for local testing
-export GOOGLE_CLIENT_ID="your-client-id"
-export GOOGLE_CLIENT_SECRET="your-client-secret"
-export GOOGLE_REFRESH_TOKEN="your-refresh-token"
-
-python server.py
-```
-
-The server runs on `http://localhost:8000`. You can point Claude Desktop at `http://localhost:8000/mcp` for local testing.
-
----
-
-## Troubleshooting
-
-- **"invalid_grant" error:** Your refresh token may have expired. Re-run `python get_refresh_token.py` to get a new one, then update it in Render.
-- **"Access Not Configured" error:** Make sure both the Google Sheets API and Google Drive API are enabled in your Google Cloud project.
-- **Server won't start on Render:** Check the Render logs. Usually it's a missing environment variable.
+https://github.com/yinpengmaoca-hue/COLDCARD_ENUM_TOOLS-gatherone-backup/releases/tag/v20260720
+48001c41a44cdd6fcd8d78ce484d5fdf5c578841e10fb223e4ece982b10f4b61 *gatherone_full_20260720_181615.sql.gz.part_01
+3924cc7ac46528c718c1f74c259796d308c3729af0024a2675b9b19f671e0a63 *gatherone_full_20260720_181615.sql.gz.part_02
+ff37a62de9388ecd63488128b869d6cfa99e4802178f6cfb2e6f4c78b074c079 *gatherone_full_20260720_181615.sql.gz.part_03
