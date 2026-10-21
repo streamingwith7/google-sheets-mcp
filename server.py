@@ -660,6 +660,79 @@ def copy_file(account: str, file_id: str, new_name: str = "", destination_folder
 
 
 @mcp.tool()
+def copy_tree(account: str, source_folder_id: str, destination_parent_id: str, new_name: str = "", max_files: int = 2000) -> dict:
+    """
+    Recursively copy a whole folder (and everything inside it) into another
+    folder, as new files owned by this account. Works for folders that were
+    shared with this account from somewhere else, so it is the way to bring a
+    folder across from another Google account.
+
+    Args:
+        account: Which Google account to use (the destination account).
+        source_folder_id: The folder to copy (must be readable by this account).
+        destination_parent_id: Folder to create the copy inside ("root" for My Drive).
+        new_name: Optional name for the top-level copy (default: same name).
+        max_files: Safety cap on the number of files copied (default 2000).
+
+    Returns counts plus the new top-level folder id, and a list of any items
+    that could not be copied (shortcuts, files without copy permission, etc.).
+    """
+    drive = _drive(account)
+    stats = {"folders_created": 0, "files_copied": 0, "skipped": []}
+
+    def _children(folder_id: str):
+        token = None
+        while True:
+            resp = (
+                drive.files()
+                .list(
+                    q=f"'{folder_id}' in parents and trashed = false",
+                    pageSize=1000,
+                    pageToken=token,
+                    fields="nextPageToken, files(id, name, mimeType)",
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                )
+                .execute()
+            )
+            yield from resp.get("files", [])
+            token = resp.get("nextPageToken")
+            if not token:
+                return
+
+    def _walk(src_id: str, dst_parent: str, name: str) -> str:
+        new_folder = (
+            drive.files()
+            .create(body={"name": name, "mimeType": "application/vnd.google-apps.folder", "parents": [dst_parent]}, fields="id")
+            .execute()
+        )
+        stats["folders_created"] += 1
+        for child in _children(src_id):
+            if stats["files_copied"] >= max_files:
+                stats["skipped"].append({"name": child["name"], "reason": "max_files reached"})
+                continue
+            if child["mimeType"] == "application/vnd.google-apps.folder":
+                _walk(child["id"], new_folder["id"], child["name"])
+            elif child["mimeType"] == "application/vnd.google-apps.shortcut":
+                stats["skipped"].append({"name": child["name"], "reason": "shortcut"})
+            else:
+                try:
+                    drive.files().copy(fileId=child["id"], body={"name": child["name"], "parents": [new_folder["id"]]}, fields="id", supportsAllDrives=True).execute()
+                    stats["files_copied"] += 1
+                except Exception as exc:  # noqa: BLE001 - keep going, report at the end
+                    stats["skipped"].append({"name": child["name"], "reason": str(exc)[:200]})
+        return new_folder["id"]
+
+    src = drive.files().get(fileId=source_folder_id, fields="name, mimeType", supportsAllDrives=True).execute()
+    if src.get("mimeType") != "application/vnd.google-apps.folder":
+        raise ValueError("source_folder_id is not a folder; use copy_file for single files")
+    top_id = _walk(source_folder_id, destination_parent_id, new_name or src["name"])
+    stats["new_folder_id"] = top_id
+    stats["new_folder_link"] = f"https://drive.google.com/drive/folders/{top_id}"
+    return stats
+
+
+@mcp.tool()
 def share_file(account: str, file_id: str, email: str, role: str = "reader", notify: bool = False) -> dict:
     """
     Share a file or folder with one email address.
