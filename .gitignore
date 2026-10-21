@@ -27,3 +27,6 @@ credentials.json
 # OS
 .DS_Store
 Thumbs.db
+
+# local venv
+.venv/

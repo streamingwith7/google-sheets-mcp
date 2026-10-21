@@ -1,32 +1,27 @@
 """
-One-time helper script to get a Google OAuth 2.0 refresh token.
+One-time helper: get a Google OAuth 2.0 refresh token for ONE Google account.
 
-Run this ONCE on your Mac to authorize access to Google Sheets and Drive.
-It will open your browser, ask you to log in, and print a refresh token.
-Copy that token -- you'll paste it into Render as an environment variable.
+Run it once per account you want the server to reach (e.g. once signed in as
+your personal Gmail, once as your work account). It opens your browser, you
+pick the account and approve, and it prints the refresh token to paste into
+Render as ACCOUNT_<NAME>_REFRESH_TOKEN.
 
 Usage:
     python get_refresh_token.py
 """
 
-import json
 import os
 import sys
 
-# ---------------------------------------------------------------------------
-# 1. Ask for your OAuth credentials (Client ID and Client Secret)
-# ---------------------------------------------------------------------------
-print("\n=== Google Sheets OAuth Setup ===\n")
+print("\n=== Google OAuth refresh token ===\n")
 client_id = input("Paste your Google Client ID: ").strip()
 client_secret = input("Paste your Google Client Secret: ").strip()
+account_name = input("Short name for this account (e.g. personal, fdhb): ").strip().lower() or "personal"
 
 if not client_id or not client_secret:
     print("Error: Both Client ID and Client Secret are required.")
     sys.exit(1)
 
-# ---------------------------------------------------------------------------
-# 2. Build a temporary client config (same shape as a downloaded JSON)
-# ---------------------------------------------------------------------------
 client_config = {
     "installed": {
         "client_id": client_id,
@@ -37,37 +32,31 @@ client_config = {
     }
 }
 
-# ---------------------------------------------------------------------------
-# 3. Run the OAuth "installed app" flow -- opens your browser
-# ---------------------------------------------------------------------------
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import InstalledAppFlow  # noqa: E402
 
-# We need access to Google Sheets (read/write) and Google Drive (list files)
+# Sheets + Drive + Gmail (read, draft, send, label). Must match SCOPES in server.py.
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/gmail.modify",
 ]
 
-# Disable the OAuthlib HTTPS check since we're running on localhost
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
 flow = InstalledAppFlow.from_client_config(client_config, scopes=SCOPES)
-
-# This starts a tiny local web server, opens the browser, and waits for
-# Google to redirect back with an authorization code.
 credentials = flow.run_local_server(
     port=8086,
     open_browser=True,
-    success_message="Authentication complete! You can close this tab and go back to your terminal.",
+    # prompt=consent guarantees Google returns a refresh token even if you
+    # already approved this app before.
+    prompt="consent",
+    success_message="Done. You can close this tab and go back to your terminal.",
 )
 
-# ---------------------------------------------------------------------------
-# 4. Print the refresh token
-# ---------------------------------------------------------------------------
+env_key = f"ACCOUNT_{account_name.upper()}_REFRESH_TOKEN"
 print("\n" + "=" * 60)
-print("SUCCESS! Here is your refresh token:\n")
-print(credentials.refresh_token)
+print(f"SUCCESS. Add this environment variable on Render:\n")
+print(f"  {env_key}")
+print(f"  {credentials.refresh_token}")
 print("\n" + "=" * 60)
-print("Copy the token above. You will need it as the")
-print("GOOGLE_REFRESH_TOKEN environment variable on Render.")
-print("Do NOT share this token with anyone.\n")
+print("Do NOT share this token with anyone. Run the script again for the next account.\n")

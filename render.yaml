@@ -1,16 +1,22 @@
-# Render Blueprint -- deploy this repo as a web service
+# Render Blueprint -- deploy this repo as a web service.
+# In Render: New + > Blueprint > pick this repo. Paste the secret values when asked.
 services:
   - type: web
-    name: google-sheets-mcp
+    name: google-mcp-multi
     runtime: python
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: python server.py
     envVars:
       - key: GOOGLE_CLIENT_ID
-        sync: false          # you'll paste your value in the Render dashboard
+        sync: false           # OAuth client ID from Google Cloud (one is enough for all accounts)
       - key: GOOGLE_CLIENT_SECRET
         sync: false
-      - key: GOOGLE_REFRESH_TOKEN
-        sync: false
-      - key: PORT
-        value: 10000         # Render's default port
+      - key: ACCOUNT_PERSONAL_REFRESH_TOKEN
+        sync: false           # from get_refresh_token.py, signed in as the personal account
+      - key: ACCOUNT_FDHB_REFRESH_TOKEN
+        sync: false           # from get_refresh_token.py, signed in as the work account (optional)
+      - key: MCP_PATH_SECRET
+        generateValue: true   # Render generates a random secret; endpoint becomes /mcp-<secret>
+      - key: PYTHON_VERSION
+        value: 3.12.4
