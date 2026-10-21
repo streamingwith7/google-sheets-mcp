@@ -59,7 +59,7 @@ def _load_accounts() -> dict[str, dict[str, str]]:
     accounts: dict[str, dict[str, str]] = {}
 
     for key, value in os.environ.items():
-        if key.startswith(_ENV_PREFIX) and key.endswith(_ENV_SUFFIX) and value:
+        if key.startswith(_ENV_PREFIX) and key.endswith(_ENV_SUFFIX) and value.strip().lower() not in ("", "none", "skip", "-"):
             name = key[len(_ENV_PREFIX) : -len(_ENV_SUFFIX)].lower()
             accounts[name] = {
                 "refresh_token": value,
